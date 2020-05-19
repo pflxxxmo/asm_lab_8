@@ -1,4 +1,4 @@
-;Будильник. CTRL/S - установить время, CTRL/X - выгрузить программу из памяти.
+;Будильник. ALT/S - установить время, ALT/X - выгрузить программу из памяти.
 .model tiny
 .code
 .286
@@ -12,7 +12,7 @@ jmp transit
 ;Резидентная часть;
 ;;;;;;;;;;;;;;;;;;;
 ;метка для обнаружения себя в памяти
-label_tsr dw 1111h
+label_tsr dw 4376h
 ;Процедура обработки прерывания для вектора 09
 vect09_new proc
 	pushf
@@ -20,21 +20,28 @@ vect09_new proc
 	push ds
 	push es
 	pushf
+
 	call dword ptr cs:[vect09_old] ;вызов старого обработчика
 	
-;проверяем нажата ли клавиша CTRL (тестируем второй бит состояния клавиатуры)
+;тестируем второй бит состояния клавиатуры
 unload_key:
-	mov ah,02     ;
-	int 16h
+	;mov ah,02     ;
+	;int 16h
 	test al,04h
 	jz  iret_l
-;если CTRL нажат, проверяем нажатие X или S
-	in al,60h     ;в al код последней нажатой клавиши
-	cmp al,2Dh    ;проверка на нажатие клавиши X(scan-code)
+;если ALT нажат, проверяем нажатие X или S
+	;in al, 60h     ;в al код последней нажатой клавиши
+
+	mov ah, 11h
+	int 16h
+	cmp ah,2Dh     ;проверка на нажатие клавиши X(scan-code)
 	je  unload
-	cmp al,1Fh    ;проверка на нажатие клавиши S(scan-code)
+    mov ah, 11h
+	int 16h
+	cmp ah,1Fh     ;проверка на нажатие клавиши S(scan-code)
 	je  next_step
 	jmp iret_l
+
 	
 next_step:
 	call next_step_proc
@@ -65,7 +72,13 @@ iret_l:
 	pop ds
 	popa
 	popf                                  ;возвращаем флаги
-	iret                                  ;вернуться из прерывания
+	iret                                  ;вернуться из прерывания	
+
+vect09_old dd ?
+vect4A_old dd ?
+msg_time db 'Tekushee vremya - ','$'
+msg_anykey db 13,10,'Nazhmite lubuju klavishu...','$'
+msg_set DB 13,10,'Ustanovit budilnik na: $'
 vect09_new endp
 
 next_step_proc proc
@@ -232,7 +245,36 @@ vect4A_new proc
 	pusha
 	push ds
 	push es
-    call banner
+	
+    mov ax, 0003h
+	int 10h
+	
+	push ds
+    mov ax, 0b800h
+    mov ds, ax
+    mov bx, 820                                 
+    mov [bx], 'A'
+    inc bx
+    mov [bx], 07h
+    inc bx
+    mov [bx], 'L'
+    inc bx
+    mov [bx], 07h
+    inc bx
+    mov [bx], 'A'
+    inc bx
+    mov [bx], 07h
+    inc bx
+    mov [bx], 'R'
+    inc bx
+    mov [bx], 07h
+    inc bx
+    mov [bx], 'M'
+    inc bx
+    mov [bx], 07h
+    inc bx
+    pop ds
+		
 	mov ah,0
 	int 16h
 	mov ax, 0003h
@@ -247,44 +289,10 @@ iret_l2:
 	iret
 vect4A_new endp
 
-banner proc
-    pusha
-    push es
-    push 0B800h
-    pop es
-
-    ;fill blue
-    xor di, di       
-    fill_screen_loop:         
-    
-        mov BYTE PTR es:[di], ' '
-        mov BYTE PTR es:[di + 1], 00010111b       
-            
-    add di, 2
-    cmp di, screen_size
-    jl fill_screen_loop
-
-    xor di, di
-    xor si, si      
-    draw_banner_loop:         
-
-        mov bh, cs:[banner_text + si]
-        mov BYTE PTR es:[di], bh
-        mov BYTE PTR es:[di + 1], 00010111b       
-
-        add si, 1        
-        add di, 2
-        cmp si, banner_size
-    jl draw_banner_loop
-
-    pop es
-    popa
-    ret
-banner endp
-
 ;;;;;;;;;;;;;;;;;;
 ;Транзитная часть;
 ;;;;;;;;;;;;;;;;;;
+
 transit:
 ;получаем адрес программы обработки прерывания для вектора 09
 	mov ax,3509h     ;получить адрес обработчика прерывания
@@ -297,11 +305,11 @@ transit:
 	mov word ptr vect09_old,bx
 	mov word ptr vect09_old[2],es
 ;записываем адрес нового обработчика прерывания для вектора 09
-	CLI                   ;запрещить прерывание
+	CLI                   ;запретить прерывание
 	mov ax,2509h
 	lea dx,vect09_new
 	int 21h
-	STI                    ;разрешить прерывание
+	STI                   ;разрешить прерывание
 ;сбросим сигнал тревоги в RTC
 	mov ah,7
     int 1Ah
@@ -338,34 +346,8 @@ exit:
 	mov ax,4C00h
 	int 21h
 	
-	
-;;;;;;;;
-;Данные;
-;;;;;;;;
-vect09_old dd ?
-vect4A_old dd ?
-msg_time db 'Tekushee vremya - ','$'
-msg_anykey db 13,10,'Nazhmite lubuju klavishu...','$'
-msg_set DB 13,10,'Ustanovit budilnik na: $'
 ;messages
-msg_hello db 'Dlya zavoda budilnika nazhmite CTRL+S, dlya vigruzki nazhmite CTRL+X',13,10,'$'
+msg_hello db 'Dlya zavoda budilnika nazhmite ALT+S, dlya vigruzki nazhmite ALT+X',13,10,'$'
 msg_bye db 'Rezident uzhe zagruzhen!',13,10,'$'
-screen_size equ 4000 ;80x25 *2 для символа и атрибута
-              
-banner_text   db  '                                                                                '        
-              db  '      ___           ___       ___           ___           ___                   '    
-              db  '     /\  \         /\__\     /\  \         /\  \         /\__\                  '
-              db  '    /::\  \       /:/  /    /::\  \       /::\  \       /::|  |                 '
-              db  '   /:/\:\  \     /:/  /    /:/\:\  \     /:/\:\  \     /:|:|  |                 '
-              db  '  /::\~\:\  \   /:/  /    /::\~\:\  \   /::\~\:\  \   /:/|:|__|__               '
-              db  ' /:/\:\ \:\__\ /:/__/    /:/\:\ \:\__\ /:/\:\ \:\__\ /:/ |::::\__\              '
-              db  ' \/__\:\/:/  / \:\  \    \/__\:\/:/  / \/_|::\/:/  / \/__/~~/:/  /              '
-              db  '      \::/  /   \:\  \        \::/  /     |:|::/  /        /:/  /               '
-              db  '      /:/  /     \:\  \       /:/  /      |:|\/__/        /:/  /                '
-              db  '     /:/  /       \:\__\     /:/  /       |:|  |         /:/  /                 '
-              db  '     \/__/         \/__/     \/__/         \|__|         \/__/                  '             
-                                                                                                   
-banner_height equ 12
-banner_size equ 80 * banner_height
-	
+screen_size equ 4000 ;80x25 *2 для символа и атрибута	
 end start
